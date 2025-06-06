@@ -1,6 +1,11 @@
+# --- Fantasy Football Simulator ---
+# This script simulates an American football game between two equally matched teams
+# using randomly determined outcomes influenced by basic football rules and strategy.
+
 import random
 import numpy as np
 
+# --- Decision Logic for 4th Down ---
 def choose_action(down, y_to_fd, y_to_td):
     if down == 4:
         if y_to_td > 55:
@@ -17,19 +22,17 @@ def choose_action(down, y_to_fd, y_to_td):
                 return 'punt'
     return random.choice(['run', 'pass'])
 
+# --- Determine Outcome of Chosen Action ---
 def choose_outcome(action, qb_skill_level=0.03):
     if action == 'pass':
         outcomes = ['complete', 'incomplete', 'sack', 'interception']
         probabilities = [0.6, 0.3, 0.07, qb_skill_level]
         probabilities[0] += (0.03 - qb_skill_level)
         return random.choices(outcomes, probabilities)[0]
-    elif action == 'run':
-        return 'run'
-    elif action == 'punt':
-        return 'punt_attempt'
-    elif action == 'field_goal':
-        return 'field_goal_attempt'
+    elif action in ['run', 'punt', 'field_goal']:
+        return action + '_attempt' if action != 'run' else 'run'
 
+# --- Simulate One Play ---
 def simulate_play(action, qb_skill_level=0.03):
     if action == 'run':
         y_gained = int(np.random.normal(4, 2))
@@ -46,11 +49,9 @@ def simulate_play(action, qb_skill_level=0.03):
             return -y_lost, 'sack'
         elif outcome == 'interception':
             return 0, 'interception'
-    elif action == 'punt':
-        return 0, 'punt_attempt'
-    elif action == 'field_goal':
-        return 0, 'field_goal_attempt'
+    return 0, action  # punt or field goal
 
+# --- Game Clock Logic ---
 def update_game_clock(clock, seconds, quarter):
     total_seconds = clock - seconds
     if total_seconds < 0:
@@ -58,11 +59,13 @@ def update_game_clock(clock, seconds, quarter):
         total_seconds += 15 * 60
     return max(0, total_seconds), quarter
 
+# --- Field Goal Logic ---
 def attempt_field_goal(y_to_td):
     distance = 100 - y_to_td
     success_chance = max(0.3, 1 - (distance / 100))
     return random.random() < success_chance
 
+# --- Stat Tracker Initialization ---
 def initialize_stats():
     return {
         'pass_attempts': 0,
@@ -81,6 +84,7 @@ def initialize_stats():
         'punt_yards': 0
     }
 
+# --- Simulate One Possession ---
 def simulate_possession(possession, score_A, score_B, clock, quarter, stats_A, stats_B, y_to_td):
     down = 1
     y_to_fd = 10
@@ -89,18 +93,13 @@ def simulate_possession(possession, score_A, score_B, clock, quarter, stats_A, s
         action = choose_action(down, y_to_fd, y_to_td)
         y_gained, outcome = simulate_play(action)
 
-        print(f"Quarter: {quarter} - Time: {clock // 60}:{clock % 60:02d} - Down: {down}, "
-              f"Yards to First Down: {y_to_fd}, Yards to Touchdown: {y_to_td}")
+        print(f"Quarter: {quarter} - Time: {clock // 60}:{clock % 60:02d} - Down: {down}, Yards to First Down: {y_to_fd}, Yards to Touchdown: {y_to_td}")
         print(f"Action chosen: {action}, Outcome: {outcome}, Yards gained: {y_gained}")
 
-        if possession == 1:
-            stats = stats_A
-            stats_inv = stats_B
-        else:
-            stats = stats_B
-            stats_inv = stats_A
+        stats = stats_A if possession == 1 else stats_B
+        stats_inv = stats_B if possession == 1 else stats_A
 
-        # Update stats based on action
+        # --- Update Stats ---
         if action == 'run':
             stats['run_attempts'] += 1
             stats['y_running'] += y_gained
@@ -132,7 +131,6 @@ def simulate_possession(possession, score_A, score_B, clock, quarter, stats_A, s
             possession *= -1
             clock, quarter = update_game_clock(clock, random.randint(5, 15), quarter)
             return score_A, score_B, possession, clock, quarter, stats_A, stats_B, 80
-
         elif action == 'punt':
             punt_distance = random.randint(30, 65)
             print(f"Punt! Ball moved {punt_distance} yards.")
@@ -143,19 +141,15 @@ def simulate_possession(possession, score_A, score_B, clock, quarter, stats_A, s
             clock, quarter = update_game_clock(clock, random.randint(5, 15), quarter)
             return score_A, score_B, possession, clock, quarter, stats_A, stats_B, new_y_to_td
 
-        # Adjust yards
+        # --- Yardage and Down Management ---
         y_to_fd -= y_gained
         y_to_td -= y_gained
 
-        # Determine time taken by the play
+        # --- Time Management ---
         if action == 'pass' and outcome == 'incomplete':
-            # Incomplete pass, stops clock quickly
             t_play = random.randint(3, 12)
         else:
-            # Determine if play ends out of bounds or in bounds
             if quarter == 4:
-                # 4th quarter logic: if winning team has ball, try to stay in bounds with low out_of_bounds chance
-                # If not winning (i.e., losing team), more likely to go out_of_bounds (0.7) to stop clock (hurry-up)
                 if (possession == 1 and score_A > score_B) or (possession == -1 and score_B > score_A):
                     out_of_bounds = (random.random() < 0.1)
                 else:
@@ -164,28 +158,22 @@ def simulate_possession(possession, score_A, score_B, clock, quarter, stats_A, s
                 out_of_bounds = (random.random() < 0.5)
 
             if out_of_bounds or action in ['field_goal', 'punt'] or outcome == 'interception':
-                # Clock stops
                 t_play = random.randint(3, 7)
             else:
-                # Inbounds play
                 if quarter == 4:
-                    # In the 4th quarter, if the team with the ball is losing, hurry-up (20-30 seconds)
                     if (possession == 1 and score_A < score_B) or (possession == -1 and score_B < score_A):
                         t_play = random.randint(20, 30)
                     else:
-                        # Normal 4th quarter inbounds play: 20-40 seconds
                         t_play = random.randint(20, 40)
                 else:
-                    # Non-4th quarter inbounds: 35-50 seconds
                     t_play = random.randint(35, 50)
 
-        # Update clock
         clock, quarter = update_game_clock(clock, t_play, quarter)
         if clock == 0 and quarter <= 4:
             quarter += 1
             clock = 15 * 60
 
-        # Check for touchdown
+        # --- Touchdown Check ---
         if y_to_td <= 0:
             print("Touchdown!")
             if possession == 1:
@@ -202,7 +190,7 @@ def simulate_possession(possession, score_A, score_B, clock, quarter, stats_A, s
             clock, quarter = update_game_clock(clock, random.randint(5, 15), quarter)
             return score_A, score_B, possession, clock, quarter, stats_A, stats_B, 100
 
-        # Check downs
+        # --- Down Check ---
         if y_to_fd <= 0:
             down = 1
             y_to_fd = min(10, y_to_td)
@@ -215,6 +203,7 @@ def simulate_possession(possession, score_A, score_B, clock, quarter, stats_A, s
     clock, quarter = update_game_clock(clock, random.randint(5, 15), quarter)
     return score_A, score_B, possession, clock, quarter, stats_A, stats_B, new_y_to_td
 
+# --- Main Game Simulation ---
 def simulate_game():
     possession = 1
     score_A = 0
@@ -224,7 +213,6 @@ def simulate_game():
 
     stats_A = initialize_stats()
     stats_B = initialize_stats()
-
     y_to_td = 100
 
     while clock > 0 and quarter <= 4:
